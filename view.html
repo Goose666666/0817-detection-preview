@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>0817 数据集标注预览</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 "Microsoft YaHei",sans-serif;background:#1b1d21;color:#e8e8e8;
+     display:flex;height:100vh;overflow:hidden}
+#left{flex:1;display:flex;flex-direction:column;min-width:0}
+#bar{padding:10px 14px;background:#24272c;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#bar a.home{color:#7ab8ff;text-decoration:none}
+select,button{font:15px "Microsoft YaHei",sans-serif;padding:7px 16px;border:0;border-radius:5px;
+              background:#3a3f47;color:#e8e8e8;cursor:pointer}
+button:hover,select:hover{background:#4a5058}
+button.on{background:#3d5a80}
+#pos{font-variant-numeric:tabular-nums;min-width:84px;text-align:center}
+#stage{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#101215}
+#wrap{position:relative;line-height:0}
+#im{display:block;width:100%;height:100%}
+.bx{position:absolute;border:2px solid;pointer-events:none}
+.lb{position:absolute;top:-20px;left:-2px;font-size:12px;line-height:16px;padding:1px 5px;
+    border-radius:3px;white-space:nowrap;color:#111}
+#right{width:250px;background:#24272c;overflow:auto;padding:12px 10px;flex:none}
+.cls{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:4px;cursor:pointer}
+.cls:hover{background:#31353c}
+.cls.off{opacity:.35}
+.sw{width:15px;height:15px;border-radius:3px;flex:none}
+.ct{margin-left:auto;font-variant-numeric:tabular-nums;color:#9aa3ad}
+#films{height:92px;background:#24272c;display:flex;gap:5px;overflow-x:auto;padding:7px;flex:none}
+#films img{height:100%;border:3px solid transparent;cursor:pointer;border-radius:3px}
+#films img.on{border-color:#4da3ff}
+</style></head><body>
+<div id="left">
+  <div id="bar">
+    <a class="home" href="index.html">全部序列</a>
+    <select id="gsel"></select>
+    <button onclick="go(-1)">上一张</button>
+    <button onclick="go(1)">下一张</button>
+    <span id="pos"></span>
+    <button id="tb" class="on" onclick="toggleBox()">框</button>
+    <button id="tl" class="on" onclick="toggleLab()">名称</button>
+  </div>
+  <div id="stage"><div id="wrap"><img id="im" alt=""><div id="ov"></div></div></div>
+  <div id="films"></div>
+</div>
+<div id="right"><div id="legend"></div></div>
+<script>
+const CLS = [["CA001", "刷子"], ["CA002", "耳机"], ["CA003", "水杯"], ["CA004", "衣架"], ["CB001", "巧克力"], ["CB002", "瓜子"], ["CB003", "火腿肠"], ["CB004", "薯片"], ["CC001", "罐装饮料"], ["CC002", "瓶装饮料"], ["CC003", "盒装牛奶"], ["CC004", "瓶装饮用水"], ["CD001", "桃子"], ["CD002", "苹果"], ["CD003", "香蕉"], ["CD004", "梨"], ["CEA002", "头戴式耳机"], ["CEB001", "条状巧克力"], ["CEB004", "袋装薯片"]], COLORS = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990", "#dcbeff", "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1", "#000075"], GROUPS = [["CA_08062145", "CA/08062145", 50], ["CA_08151436", "CA/08151436", 57], ["CA_08151440", "CA/08151440", 57], ["CA_08151443", "CA/08151443", 57], ["CA_CA", "CA/CA", 79], ["CB_08082230", "CB/08082230", 25], ["CB_08082237", "CB/08082237", 25], ["CB_08082243", "CB/08082243", 25], ["CB_08151454", "CB/08151454", 72], ["CB_08151455", "CB/08151455", 72], ["CB_08151456", "CB/08151456", 72], ["CB_CB", "CB/CB", 9], ["CC_08151500", "CC/08151500", 60], ["CC_08151504", "CC/08151504", 60], ["CC_08151509", "CC/08151509", 60], ["CC_CC", "CC/CC", 100], ["CC_IMG_20260705", "CC/IMG_20260705", 20], ["CD_08082244", "CD/08082244", 25], ["CD_08151516", "CD/08151516", 70], ["CD_08151518", "CD/08151518", 70], ["CD_08151519", "CD/08151519", 70], ["CD_CD", "CD/CD", 55], ["CD_IMG_20260705", "CD/IMG_20260705", 10]];
+let D = null, i = 0, showBox = true, showLab = true, hidden = new Set();
+
+function qs(k){ return new URLSearchParams(location.search).get(k); }
+function gid(){ return qs('g') || GROUPS[0][0]; }
+
+const sel = document.getElementById('gsel');
+GROUPS.forEach(function(g){
+  const o = document.createElement('option');
+  o.value = g[0]; o.textContent = g[1] + '  ' + g[2] + ' 张';
+  sel.appendChild(o);
+});
+sel.value = gid();
+sel.onchange = function(){ location.search = '?g=' + sel.value; };
+
+fetch('data/' + gid() + '.json').then(function(r){ return r.json(); }).then(function(d){
+  D = d;
+  document.title = d.group + ' 标注预览';
+  films();
+  show(0);
+});
+
+function films(){
+  const box = document.getElementById('films');
+  box.innerHTML = '';
+  D.frames.forEach(function(f, k){
+    const im = document.createElement('img');
+    im.src = 'th/' + f.f + '/' + f.n;
+    im.loading = 'lazy';
+    im.onclick = function(){ show(k); };
+    box.appendChild(im);
+  });
+}
+
+function fit(){
+  const st = document.getElementById('stage'), wr = document.getElementById('wrap');
+  const r = D.frames[i].r || 16 / 9;
+  let w = st.clientWidth - 16, h = w / r;
+  if (h > st.clientHeight - 16){ h = st.clientHeight - 16; w = h * r; }
+  wr.style.width = Math.round(w) + 'px';
+  wr.style.height = Math.round(h) + 'px';
+}
+
+function show(k){
+  i = Math.max(0, Math.min(D.frames.length - 1, k));
+  const f = D.frames[i];
+  document.getElementById('im').src = 'img/' + f.f + '/' + f.n;
+  fit();
+  document.getElementById('pos').textContent = (i + 1) + ' / ' + D.frames.length;
+  const ims = document.getElementById('films').children;
+  for (let j = 0; j < ims.length; j++) ims[j].className = (j === i ? 'on' : '');
+  if (ims[i]) ims[i].scrollIntoView({block: 'nearest', inline: 'center'});
+  draw();
+  legend();
+}
+
+function draw(){
+  const ov = document.getElementById('ov');
+  ov.innerHTML = '';
+  if (!showBox) return;
+  D.frames[i].b.forEach(function(b){
+    if (hidden.has(b[0])) return;
+    const d = document.createElement('div');
+    d.className = 'bx';
+    d.style.borderColor = COLORS[b[0]];
+    d.style.left = (b[1] * 100) + '%';
+    d.style.top = (b[2] * 100) + '%';
+    d.style.width = ((b[3] - b[1]) * 100) + '%';
+    d.style.height = ((b[4] - b[2]) * 100) + '%';
+    if (showLab){
+      const s = document.createElement('span');
+      s.className = 'lb';
+      s.style.background = COLORS[b[0]];
+      s.textContent = CLS[b[0]][0] + ' ' + CLS[b[0]][1];
+      d.appendChild(s);
+    }
+    ov.appendChild(d);
+  });
+}
+
+function legend(){
+  const n = {};
+  D.frames[i].b.forEach(function(b){ n[b[0]] = (n[b[0]] || 0) + 1; });
+  const box = document.getElementById('legend');
+  box.innerHTML = '';
+  Object.keys(n).map(Number).sort(function(a, b){ return a - b; }).forEach(function(c){
+    const row = document.createElement('div');
+    row.className = 'cls' + (hidden.has(c) ? ' off' : '');
+    row.onclick = function(){
+      if (hidden.has(c)) hidden.delete(c); else hidden.add(c);
+      draw(); legend();
+    };
+    row.innerHTML = '<span class="sw" style="background:' + COLORS[c] + '"></span>'
+                  + '<span>' + CLS[c][0] + ' ' + CLS[c][1] + '</span>'
+                  + '<span class="ct">' + n[c] + '</span>';
+    box.appendChild(row);
+  });
+}
+
+function go(d){ show(i + d); }
+function toggleBox(){
+  showBox = !showBox;
+  document.getElementById('tb').className = showBox ? 'on' : '';
+  draw();
+}
+function toggleLab(){
+  showLab = !showLab;
+  document.getElementById('tl').className = showLab ? 'on' : '';
+  draw();
+}
+window.onresize = function(){ if (D) fit(); };
+document.onkeydown = function(e){
+  if (e.key === 'ArrowLeft') go(-1);
+  else if (e.key === 'ArrowRight') go(1);
+};
+</script></body></html>
